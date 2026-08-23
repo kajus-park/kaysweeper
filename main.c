@@ -12,6 +12,7 @@
 #include <android/sensor.h>
 #include <android_native_app_glue.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -176,6 +177,18 @@ void HandleSuspend() { suspended = 1; }
 
 void HandleResume() { suspended = 0; }
 
+void game_draw_number(int x, int y, int size, u_int8_t number, uint32_t color) {
+  CNFGLastColor = color;
+  CNFGTackRectangle(x, y, x + size, y + size);
+  char *numbers[] = {
+      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+  };
+  CNFGColor(0x000000ff);
+  CNFGPenX = x + size / 5;
+  CNFGPenY = y + size / 5;
+  CNFGDrawText(numbers[number], size / 5);
+};
+
 int main(int argc, char **argv) {
   int i, x, y;
   double ThisTime;
@@ -276,14 +289,16 @@ int main(int argc, char **argv) {
 
           if (*field & IS_BOMB) {
             CNFGLastColor = 0xff0000ff;
+            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           } else if (*field & REVEALED) {
-            CNFGLastColor = 0xffffffff;
+            game_draw_number(xo, yo, box_size, *field & BOMBS_MASK, 0xffffffff);
           } else if (*field & FLAGGED) {
             CNFGLastColor = 0xffff00ff;
+            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           } else {
-            CNFGLastColor = 0x222222ff;
+            CNFGLastColor = 0x888888ff;
+            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           }
-          CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
         }
       }
     }

@@ -54,7 +54,7 @@ int game_index_y(Game g, int idx) {
 // returns true if the field is a bomb
 bool game_open_field_is_bomb(Game g, int x, int y) {
   Field *field = game_get_field(g, x, y);
-  if (*field & REVEALED)
+  if (*field & REVEALED || *field & FLAGGED)
     return false;
   *field |= REVEALED;
   if (*field & IS_BOMB) {
