@@ -12,6 +12,7 @@
 #include <android/sensor.h>
 #include <android_native_app_glue.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +24,7 @@
 #include "CNFG.h"
 #include "utility.c"
 
+#include "draw.c"
 #include "game.c"
 
 unsigned frames = 0;
@@ -30,6 +32,7 @@ unsigned long iframeno = 0;
 
 #define GENLINEWIDTH 89
 #define GENLINES 67
+#define DEBUG true
 
 int genlinelen = 0;
 char genlog[(GENLINEWIDTH + 1) * (GENLINES + 1) + 2] = "log";
@@ -177,18 +180,6 @@ void HandleSuspend() { suspended = 1; }
 
 void HandleResume() { suspended = 0; }
 
-void game_draw_number(int x, int y, int size, u_int8_t number, uint32_t color) {
-  CNFGLastColor = color;
-  CNFGTackRectangle(x, y, x + size, y + size);
-  char *numbers[] = {
-      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-  };
-  CNFGColor(0x000000ff);
-  CNFGPenX = x + size / 5;
-  CNFGPenY = y + size / 5;
-  CNFGDrawText(numbers[number], size / 5);
-};
-
 int main(int argc, char **argv) {
   int i, x, y;
   double ThisTime;
@@ -212,8 +203,8 @@ int main(int argc, char **argv) {
   }
 
   Game g = {0};
-  game_reset(&g, 11, 23, 50);
-  game_generate_bombs(g, 3, 11);
+  game_reset(&g, 5, 12, 5);
+  // game_reset(&g, 11, 23, 60);
 
   while (1) {
     int i, pos;
@@ -252,11 +243,58 @@ int main(int argc, char **argv) {
     // Square behind text
 
     Press_Type press = get_press_type();
-
     CNFGBGColor = 0x444444ff;
     int smallest_dim = min_int(screeny, screenx);
     int min_border = smallest_dim / 40;
-    int top_bar = smallest_dim / 10;
+    int top_bar = smallest_dim / 8;
+    { // Top Bar
+      int seconds = (int)g.time_spent % 60;
+      int minutes = g.time_spent / 60;
+      const int bufsize = 128;
+      char buffer[bufsize];
+      snprintf(buffer, bufsize, "%02d:%02d\n", minutes, seconds);
+      CNFGPenX = top_bar / 5;
+      CNFGPenY = top_bar / 5;
+      CNFGColor(0xffffffff);
+      CNFGDrawText(&buffer[0], top_bar / 5);
+
+      int buton_size = top_bar * 0.9;
+      x = (screenx - buton_size) / 2;
+      y = top_bar * 0.1;
+      CNFGLastColor = g.confirm_reset ? 0xaa8844ff : 0xffffffff;
+      CNFGTackRectangle(x, y, x + buton_size, y + buton_size);
+      ui_draw_bitmap(x, y, buton_size, 1, bitmap_redraw_arrow, 0x00000ff);
+      if (press == SHORT) {
+        if (in_rect(lastbuttonx, lastbuttony, x, y, buton_size, buton_size)) {
+          if (g.confirm_reset) {
+            game_reset(&g, 0, 0, 0);
+            press = NONE;
+            g.confirm_reset = false;
+            continue;
+          } else {
+            g.confirm_reset = true;
+          }
+          press = NONE;
+        } else {
+          g.confirm_reset = false;
+        }
+      }
+
+      int bombs_remaining = g.total_bombs - game_count_flags(g);
+      snprintf(buffer, bufsize, "B%02d", bombs_remaining);
+      CNFGPenX = top_bar / 5 + 3 * screenx / 4;
+      CNFGColor(0xffffffff);
+      CNFGDrawText(&buffer[0], top_bar / 5);
+    }
+    { // Win/loss
+      if (g.winstate == WON) {
+        printf("WON\n");
+        press = NONE;
+      } else if (g.winstate == LOST) {
+        printf("LOST\n");
+        press = NONE;
+      }
+    }
     { // boxes
       int gap = smallest_dim / 200;
       int max_x_box_size = (screenx + gap - 2 * min_border) / g.x_fields - gap;
@@ -277,7 +315,10 @@ int main(int argc, char **argv) {
             if (press == SHORT) {
               bool lost = game_open_field_is_bomb(g, x, y);
               if (lost) {
-                printf("LOOOSSSTTT");
+                g.winstate = LOST;
+              }
+              if (game_won(g)) {
+                g.winstate = WON;
               }
               // printf("opening field %d %d", x, y);
             } else if (press == LONG) {
@@ -286,14 +327,20 @@ int main(int argc, char **argv) {
               printf("ERROR SHOULLD NOT HAPPEN press was %d\n", press);
             }
           }
-
-          if (*field & IS_BOMB) {
-            CNFGLastColor = 0xff0000ff;
-            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
-          } else if (*field & REVEALED) {
-            game_draw_number(xo, yo, box_size, *field & BOMBS_MASK, 0xffffffff);
+          if (true) {
+            ui_draw_bitmap(xo, yo, box_size, 1,
+                           bitmap_letters[(x + y * g.x_fields) % 26],
+                           0xffffffff);
+          } else if (*field & REVEALED && !(*field & IS_BOMB)) {
+            uint32_t fg = minesweeper_colors[*field & BOMBS_MASK];
+            ui_draw_number(xo, yo, box_size, *field & BOMBS_MASK, fg,
+                           0xffffffff);
           } else if (*field & FLAGGED) {
             CNFGLastColor = 0xffff00ff;
+            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
+          } else if ((DEBUG || g.winstate == LOST) && *field & IS_BOMB) {
+
+            CNFGLastColor = 0xff0000ff;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           } else {
             CNFGLastColor = 0x888888ff;
@@ -341,7 +388,7 @@ int main(int argc, char **argv) {
     //   + (i / 20) * 20); CNFGTackPoly(pp, 3);
     // }
     //
-    CNFGPenX = 5;
+    CNFGPenX = 10;
     CNFGPenY = 600;
     CNFGLastColor = 0x4444ffff;
     CNFGDrawText(genlog, 4);
@@ -350,6 +397,12 @@ int main(int argc, char **argv) {
     CNFGSwapBuffers();
 
     ThisTime = OGGetAbsoluteTime();
+    double delta_time = ThisTime - LastFrameTime;
+    LastFrameTime = ThisTime;
+    if (g.winstate == PLAYING) {
+      game_add_time_to_timer(&g, delta_time);
+    }
+
     if (ThisTime > LastFPSTime + 1) {
       printf("FPS: %d\n", frames);
       frames = 0;

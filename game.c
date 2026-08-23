@@ -6,11 +6,18 @@
 #include <string.h>
 #include <sys/types.h>
 
+typedef int Winstate;
+#define PLAYING 0
+#define WON 1
+#define LOST 2
+
 typedef u_int8_t Field;
 typedef struct Game {
-  bool _started;
-  bool *started;
-  int time_spent;
+  Winstate winstate;
+  bool started;
+  bool *_started;
+  bool confirm_reset;
+  double time_spent;
   int x_fields, y_fields;
   int total_bombs;
   int capacity;
@@ -51,8 +58,41 @@ int game_index_y(Game g, int idx) {
   }
   return idx / g.x_fields;
 }
+
+void game_generate_bombs(Game g, int start_x, int start_y) {
+  int placed_bombs = 0;
+  memset(g.fields, 0, g.x_fields * g.y_fields);
+  while (placed_bombs < g.total_bombs) {
+    int rx = rand() % g.x_fields;
+    int ry = rand() % g.y_fields;
+    if (abs_int(start_x - rx) <= 1 && abs_int(start_y - ry) <= 1) {
+      continue;
+    }
+    Field *field = game_get_field(g, rx, ry);
+    if (*field & IS_BOMB)
+      continue;
+    *field |= IS_BOMB;
+    placed_bombs++;
+    for (int dy = -1; dy <= 1; dy++) {
+      for (int dx = -1; dx <= 1; dx++) {
+        int x = dx + rx;
+        int y = dy + ry;
+        Field *other = game_get_field(g, x, y);
+        if (other != NULL)
+          (*other)++;
+        // (*other)++; // this works because as long as flood fill is not set
+        // the number is positive
+      }
+    }
+  }
+}
+
 // returns true if the field is a bomb
 bool game_open_field_is_bomb(Game g, int x, int y) {
+  if (!g.started) {
+    game_generate_bombs(g, x, y);
+    *g._started = true;
+  }
   Field *field = game_get_field(g, x, y);
   if (*field & REVEALED || *field & FLAGGED)
     return false;
@@ -112,8 +152,9 @@ bool game_reset(Game *g, int width, int height, int num_bombs) {
     g->total_bombs = num_bombs;
   }
   g->time_spent = 0;
-  g->_started = false;
-  g->started = &g->_started;
+  g->started = false;
+  g->_started = &g->started;
+  g->winstate = PLAYING;
   if (g->capacity < g->x_fields * g->y_fields) {
     if (g->fields == NULL) {
       g->fields = malloc(g->x_fields * g->y_fields);
@@ -129,29 +170,27 @@ bool game_reset(Game *g, int width, int height, int num_bombs) {
   return true;
 }
 
-void game_generate_bombs(Game g, int start_x, int start_y) {
-  int placed_bombs = 0;
-  while (placed_bombs < g.total_bombs) {
-    int rx = rand() % g.x_fields;
-    int ry = rand() % g.y_fields;
-    if (abs_int(start_x - rx) <= 1 && abs_int(start_y - ry) <= 1) {
-      continue;
-    }
-    Field *field = game_get_field(g, rx, ry);
-    if (*field & IS_BOMB)
-      continue;
-    *field |= IS_BOMB;
-    placed_bombs++;
-    for (int dy = -1; dy <= 1; dy++) {
-      for (int dx = -1; dx <= 1; dx++) {
-        int x = dx + rx;
-        int y = dy + ry;
-        Field *other = game_get_field(g, x, y);
-        if (other != NULL)
-          (*other)++;
-        // (*other)++; // this works because as long as flood fill is not set
-        // the number is positive
-      }
-    }
+int game_count_flags(Game g) {
+  int count = 0;
+  for (int idx = 0; idx < g.x_fields * g.y_fields; idx++) {
+    Field field = g.fields[idx];
+    if (field & FLAGGED)
+      count++;
+  }
+  return count;
+}
+bool game_won(Game g) {
+  int count = 0;
+  for (int idx = 0; idx < g.x_fields * g.y_fields; idx++) {
+    Field field = g.fields[idx];
+    if (!(field & IS_BOMB) && !(field & REVEALED))
+      return false;
+  }
+  return true;
+}
+
+void game_add_time_to_timer(Game *g, double s) {
+  if (g->started) {
+    g->time_spent += s;
   }
 }
