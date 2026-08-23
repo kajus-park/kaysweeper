@@ -1,6 +1,7 @@
 #include "ASCIISymbols8x8Display.c"
 #include "CNFG.h"
 #include "utility.c"
+#include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
 typedef const u_int8_t Bitmap[8];
@@ -425,10 +426,39 @@ static const uint32_t minesweeper_colors[9] = {
     0x000000ff, // 7 - black
     0x808080ff, // 8 - gray
 };
-Bitmap bitmap_redraw_arrow = {
-    0b00000000, 0b00111100, 0b01000010, 0b01000010,
-    0b01001010, 0b01001100, 0b00101110, 0b00000000,
+// clang-format off
+static const Bitmap bitmap_redraw_arrow = {
+    0b00000000,
+    0b00111100, 
+    0b01000010, 
+    0b01000010,
+    0b01001010, 
+    0b01001100, 
+    0b00101110, 
+    0b00000000,
 };
+static const Bitmap bitmap_bomb = {
+    0b00110000,
+    0b00011000,
+    0b00111100,
+    0b01111110,
+    0b01111110,
+    0b01111110,
+    0b01111110,
+    0b00111100,
+};
+
+static const Bitmap bitmap_bomb_highlight = {
+    0b00000000,
+    0b00000000,
+    0b00000000,
+    0b00001000,
+    0b00000100,
+    0b00000000,
+    0b00000000,
+    0b00000000,
+};
+// clang-format on
 
 void ui_draw_bitmap(int px, int py, int size, double scaling, Bitmap b,
                     uint32_t color) {
@@ -462,6 +492,15 @@ void ui_draw_number(int x, int y, int size, u_int8_t number, uint32_t fg,
   // CNFGPenY = y + size / 5;
   // CNFGDrawText(numbers[number], size / 5);
 };
+void ui_draw_bomb(int x, int y, int size, uint32_t fg, uint32_t hl,
+                  uint32_t bg) {
+  double scaling = 0.8;
+  CNFGLastColor = bg;
+  CNFGTackRectangle(x, y, x + size, y + size);
+  ui_draw_bitmap(x, y, size, scaling, bitmap_bomb, fg);
+  ui_draw_bitmap(x, y, size, scaling, bitmap_bomb_highlight, hl);
+}
+
 #define ALIGN_LEFT 0
 #define ALIGN_CENTER 1
 #define ALIGN_LRIGHT 2
@@ -487,5 +526,8 @@ void ui_draw_text(int x, int y, int height, int width, double scale, char *text,
 
     if (c >= 'A' && c <= 'Z')
       ui_draw_bitmap(xo, yo, box_size, 1, bitmap_letters[c - 'A'], color);
+    else {
+      ui_draw_bitmap(xo, yo, box_size, 1, asciiSymbols[c - ' '], color);
+    }
   }
 }

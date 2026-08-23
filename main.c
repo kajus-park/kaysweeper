@@ -126,12 +126,6 @@ void HandleButton(int x, int y, int button, int bDown) {
     short_press = false;
     button_down = true;
     button_down_start_time = OGGetAbsoluteTime();
-    // int dx = button_down_start_x - x;
-    // int dy = button_down_start_y - y;
-    // if (dx * dx + dy * dy > LONG_PRESS_MOVE * LONG_PRESS_MOVE) {
-    //   button_down_last_frame = false;
-    //   press = NONE;
-    // }
   } else if (button_down) {
     double held = OGGetAbsoluteTime() - button_down_start_time;
     if (held < LONG_PRESS_TIME) {
@@ -226,24 +220,9 @@ int main(int argc, char **argv) {
 
     // // Mesh in background
     CNFGColor(0xffffffff);
-    // CNFGPenX = 20;
-    // CNFGPenY = 20;
-    // CNFGDrawText(assettext, 10);
     CNFGFlushRender();
-    //
-    // CNFGPenX = 0;
-    // CNFGPenY = 480;
-    // char st[50];
-    // sprintf(st, "%dx%d %d %d %d %d %d %d\n%d %d", screenx, screeny,
-    // lastbuttonx,
-    //         lastbuttony, lastmotionx, lastmotiony, lastkey, lastkeydown,
-    //         lastbid, lastmask);
-    // CNFGDrawText(st, 10);
-    // glLineWidth(2.0);
-    //
-    // Square behind text
 
-    Press_Type press = get_press_type();
+    Press_Type _press = get_press_type();
     CNFGBGColor = 0x444444ff;
     int smallest_dim = min_int(screeny, screenx);
     int min_border = smallest_dim / 40;
@@ -253,11 +232,9 @@ int main(int argc, char **argv) {
       int minutes = g.time_spent / 60;
       const int bufsize = 128;
       char buffer[bufsize];
-      snprintf(buffer, bufsize, "%02d:%02d\n", minutes, seconds);
-      CNFGPenX = top_bar / 5;
-      CNFGPenY = top_bar / 5;
-      CNFGColor(0xffffffff);
-      CNFGDrawText(&buffer[0], top_bar / 5);
+      snprintf(buffer, bufsize, "%02d:%02d", minutes, seconds);
+      ui_draw_text(top_bar / 5, top_bar / 5, top_bar * 3 / 5, screeny * 2 / 5,
+                   1, &buffer[0], 0xffffffff, 0, 0);
 
       int buton_size = top_bar * 0.9;
       x = (screenx - buton_size) / 2;
@@ -265,17 +242,17 @@ int main(int argc, char **argv) {
       CNFGLastColor = g.confirm_reset ? 0xaa8844ff : 0xffffffff;
       CNFGTackRectangle(x, y, x + buton_size, y + buton_size);
       ui_draw_bitmap(x, y, buton_size, 1, bitmap_redraw_arrow, 0x00000ff);
-      if (press == SHORT) {
+      if (_press == SHORT) {
         if (in_rect(lastbuttonx, lastbuttony, x, y, buton_size, buton_size)) {
           if (g.confirm_reset) {
             game_reset(&g, 0, 0, 0);
-            press = NONE;
+            _press = NONE;
             g.confirm_reset = false;
             continue;
           } else {
             g.confirm_reset = true;
           }
-          press = NONE;
+          _press = NONE;
         } else {
           g.confirm_reset = false;
         }
@@ -283,19 +260,12 @@ int main(int argc, char **argv) {
 
       int bombs_remaining = g.total_bombs - game_count_flags(g);
       snprintf(buffer, bufsize, "B%02d", bombs_remaining);
-      CNFGPenX = top_bar / 5 + 3 * screenx / 4;
-      CNFGColor(0xffffffff);
-      CNFGDrawText(&buffer[0], top_bar / 5);
-    }
-    { // Win/loss
-      if (g.winstate == WON) {
-        // ui_draw_text();
-        press = NONE;
-      } else if (g.winstate == LOST) {
-        press = NONE;
-      }
+      int width = screeny * 2 / 5;
+      ui_draw_text(screenx - top_bar / 5 - width, top_bar / 5, top_bar * 3 / 5,
+                   width, 1, &buffer[0], 0xffffffff, 0, 2);
     }
     { // boxes
+      int press = (g.winstate == PLAYING) ? _press : NONE;
       int gap = smallest_dim / 200;
       int max_x_box_size = (screenx + gap - 2 * min_border) / g.x_fields - gap;
       int max_y_box_size =
@@ -335,17 +305,30 @@ int main(int argc, char **argv) {
             CNFGLastColor = 0xffff00ff;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           } else if ((DEBUG || g.winstate == LOST) && *field & IS_BOMB) {
-
-            CNFGLastColor = 0xff0000ff;
-            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
+            ui_draw_bomb(xo, yo, box_size, 0x181818ff, 0xffffffff, 0xff0000ff);
           } else {
             CNFGLastColor = 0x888888ff;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           }
         }
       }
-    }
+    } // boxes
+    { // Win/loss
+      if (g.winstate == WON) {
+        int x = 0;
+        int y = screeny * 2 / 5;
+        int height = screeny / 5;
+        ui_draw_text(x, y, height, screenx, 1, "YOU WIN!", 0x88ff8888,
+                     0x226622aa, 1);
 
+      } else if (g.winstate == LOST) {
+        int x = 0;
+        int y = screeny * 2 / 5;
+        int height = screeny / 5;
+        ui_draw_text(x, y, height, screenx, 1, "YOU LOST!", 0xff888899,
+                     0x662222bb, 1);
+      }
+    }
     // CNFGTackRectangle(600, 0, 950, 350);
     //
     // CNFGPenX = 10;
