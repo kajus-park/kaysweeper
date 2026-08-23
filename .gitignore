@@ -1,2 +1,6 @@
 /kaysweeper.apk.idsig
 /my-release-key.keystore
+/compile_commands.json
+/AndroidManifest.xml
+/kaysweeper.apk
+/makecapk

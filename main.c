@@ -1,5 +1,18 @@
+#include <android_native_app_glue.h>
+#include <stdio.h>
+
+#include "CNFG.h"
 
 volatile int suspended;
+
+extern struct android_app *gapp;
+extern struct android_app *gapp;
+
+int HandleDestroy() { return 0; }
+
+void HandleSuspend() { suspended = 1; }
+
+void HandleResume() { suspended = 0; }
 
 short screenx, screeny;
 int lastbuttonx = 0;
@@ -11,7 +24,6 @@ int lastmask = 0;
 int lastkey, lastkeydown;
 
 static int keyboard_up;
-#include "CNFG.h"
 
 void HandleKey(int keycode, int bDown) {
   lastkey = keycode;
@@ -32,3 +44,5 @@ void HandleMotion(int x, int y, int mask) {
   lastmotionx = x;
   lastmotiony = y;
 }
+
+void main() {}
