@@ -24,6 +24,7 @@
 #include "CNFG.h"
 #include "utility.c"
 
+#include "ASCIISymbols8x8Display.c"
 #include "draw.c"
 #include "game.c"
 
@@ -288,10 +289,9 @@ int main(int argc, char **argv) {
     }
     { // Win/loss
       if (g.winstate == WON) {
-        printf("WON\n");
+        // ui_draw_text();
         press = NONE;
       } else if (g.winstate == LOST) {
-        printf("LOST\n");
         press = NONE;
       }
     }
@@ -327,11 +327,7 @@ int main(int argc, char **argv) {
               printf("ERROR SHOULLD NOT HAPPEN press was %d\n", press);
             }
           }
-          if (true) {
-            ui_draw_bitmap(xo, yo, box_size, 1,
-                           bitmap_letters[(x + y * g.x_fields) % 26],
-                           0xffffffff);
-          } else if (*field & REVEALED && !(*field & IS_BOMB)) {
+          if (*field & REVEALED && !(*field & IS_BOMB)) {
             uint32_t fg = minesweeper_colors[*field & BOMBS_MASK];
             ui_draw_number(xo, yo, box_size, *field & BOMBS_MASK, fg,
                            0xffffffff);
