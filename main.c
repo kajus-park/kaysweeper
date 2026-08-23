@@ -1,18 +1,86 @@
-#include <android_native_app_glue.h>
-#include <stdio.h>
+// Copyright (c) 2011-2020 <>< Charles Lohr - Under the MIT/x11 or NewBSD
+// License you choose.
+//  NO WARRANTY! NO GUARANTEE OF SUPPORT! USE AT YOUR OWN RISK
+//  Super basic test - see rawdrawandroid's thing for a more reasonable test.
 
+#include "CNFGAndroid.h"
+#include "os_generic.h"
+#include <GLES3/gl3.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
+#include <android/log.h>
+#include <android/sensor.h>
+#include <android_native_app_glue.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+
+#define CNFG3D
+#define CNFG_IMPLEMENTATION
 #include "CNFG.h"
+#include "utility.c"
+
+#include "game.c"
+
+unsigned frames = 0;
+unsigned long iframeno = 0;
+
+#define GENLINEWIDTH 89
+#define GENLINES 67
+
+int genlinelen = 0;
+char genlog[(GENLINEWIDTH + 1) * (GENLINES + 1) + 2] = "log";
+int genloglen;
+int genloglines;
+int firstnewline = -1;
+
+void example_log_function(int readSize, char *buf) {
+  static og_mutex_t *mt;
+  if (!mt)
+    mt = OGCreateMutex();
+  OGLockMutex(mt);
+  int i;
+  for (i = 0; (readSize >= 0) ? (i <= readSize) : buf[i]; i++) {
+    char c = buf[i];
+    if (c == '\0')
+      c = '\n';
+    if ((c != '\n' && genlinelen >= GENLINEWIDTH) || c == '\n') {
+      int k;
+      genloglines++;
+      if (genloglines >= GENLINES) {
+        genloglen -= firstnewline + 1;
+        int offset = firstnewline;
+        firstnewline = -1;
+
+        for (k = 0; k < genloglen; k++) {
+          if ((genlog[k] = genlog[k + offset + 1]) == '\n' &&
+              firstnewline < 0) {
+            firstnewline = k;
+          }
+        }
+        genlog[k] = 0;
+        genloglines--;
+      }
+      genlinelen = 0;
+      if (c != '\n') {
+        genlog[genloglen + 1] = 0;
+        genlog[genloglen++] = '\n';
+      }
+      if (firstnewline < 0)
+        firstnewline = genloglen;
+    }
+    genlog[genloglen + 1] = 0;
+    genlog[genloglen++] = c;
+    if (c != '\n')
+      genlinelen++;
+  }
+
+  OGUnlockMutex(mt);
+}
 
 volatile int suspended;
-
-extern struct android_app *gapp;
-extern struct android_app *gapp;
-
-int HandleDestroy() { return 0; }
-
-void HandleSuspend() { suspended = 1; }
-
-void HandleResume() { suspended = 0; }
 
 short screenx, screeny;
 int lastbuttonx = 0;
@@ -33,16 +101,247 @@ void HandleKey(int keycode, int bDown) {
   }
 }
 
+static bool button_down = false;
+static double button_down_start_time = {0};
+static double last_handeled_press = {0};
+static bool short_press = false;
+typedef int Press_Type;
+#define NONE 0
+#define SHORT 1
+#define LONG 2
+
 void HandleButton(int x, int y, int button, int bDown) {
-  lastbid = button;
+  // lastbid = button;
+  if (button != 0)
+    return;
+
   lastbuttonx = x;
   lastbuttony = y;
+  if (bDown) {
+    short_press = false;
+    button_down = true;
+    button_down_start_time = OGGetAbsoluteTime();
+    // int dx = button_down_start_x - x;
+    // int dy = button_down_start_y - y;
+    // if (dx * dx + dy * dy > LONG_PRESS_MOVE * LONG_PRESS_MOVE) {
+    //   button_down_last_frame = false;
+    //   press = NONE;
+    // }
+  } else if (button_down) {
+    double held = OGGetAbsoluteTime() - button_down_start_time;
+    if (held < LONG_PRESS_TIME) {
+      short_press = true;
+    }
+    button_down = false;
+  }
 }
 
 void HandleMotion(int x, int y, int mask) {
   lastmask = mask;
   lastmotionx = x;
   lastmotiony = y;
+  if (button_down) {
+    int dx = lastbuttonx - x;
+    int dy = lastbuttony - y;
+    if (dx * dx + dy * dy > LONG_PRESS_MOVE * LONG_PRESS_MOVE) {
+      button_down = false;
+      printf("moved too much");
+    }
+  }
 }
 
-void main() {}
+Press_Type get_press_type() {
+  if (last_handeled_press == button_down_start_time)
+    return NONE;
+
+  if (short_press) {
+    short_press = false;
+    last_handeled_press = button_down_start_time;
+    return SHORT;
+  }
+  double held = OGGetAbsoluteTime() - button_down_start_time;
+  if (held > LONG_PRESS_TIME) {
+    last_handeled_press = button_down_start_time;
+    return LONG;
+  }
+
+  return NONE;
+}
+
+extern struct android_app *gapp;
+
+int HandleDestroy() { return 0; }
+
+void HandleSuspend() { suspended = 1; }
+
+void HandleResume() { suspended = 0; }
+
+int main(int argc, char **argv) {
+  int i, x, y;
+  double ThisTime;
+  double LastFPSTime = OGGetAbsoluteTime();
+  double LastFrameTime = OGGetAbsoluteTime();
+  double SecToWait;
+  int linesegs = 0;
+
+  CNFGBGColor = 0x400000ff;
+  CNFGSetupFullscreen("Test Bench", 0);
+
+  const char *assettext = "Not Found";
+  AAsset *file = AAssetManager_open(gapp->activity->assetManager, "test.txt",
+                                    AASSET_MODE_BUFFER);
+  if (file) {
+    size_t fileLength = AAsset_getLength(file);
+    char *temp = malloc(fileLength + 1);
+    memcpy(temp, AAsset_getBuffer(file), fileLength);
+    temp[fileLength] = 0;
+    assettext = temp;
+  }
+
+  Game g = {0};
+  game_reset(&g, 11, 23, 50);
+  game_generate_bombs(g, 3, 11);
+
+  while (1) {
+    int i, pos;
+    float f;
+    iframeno++;
+    RDPoint pto[3];
+
+    CNFGHandleInput();
+
+    if (suspended) {
+      usleep(50000);
+      continue;
+    }
+
+    CNFGClearFrame();
+    CNFGColor(0xffffffff);
+    CNFGGetDimensions(&screenx, &screeny);
+
+    // // Mesh in background
+    CNFGColor(0xffffffff);
+    // CNFGPenX = 20;
+    // CNFGPenY = 20;
+    // CNFGDrawText(assettext, 10);
+    CNFGFlushRender();
+    //
+    // CNFGPenX = 0;
+    // CNFGPenY = 480;
+    // char st[50];
+    // sprintf(st, "%dx%d %d %d %d %d %d %d\n%d %d", screenx, screeny,
+    // lastbuttonx,
+    //         lastbuttony, lastmotionx, lastmotiony, lastkey, lastkeydown,
+    //         lastbid, lastmask);
+    // CNFGDrawText(st, 10);
+    // glLineWidth(2.0);
+    //
+    // Square behind text
+
+    Press_Type press = get_press_type();
+
+    CNFGBGColor = 0x444444ff;
+    int smallest_dim = min_int(screeny, screenx);
+    int min_border = smallest_dim / 40;
+    int top_bar = smallest_dim / 10;
+    { // boxes
+      int gap = smallest_dim / 200;
+      int max_x_box_size = (screenx + gap - 2 * min_border) / g.x_fields - gap;
+      int max_y_box_size =
+          (screeny + gap - 2 * min_border - top_bar) / g.y_fields - gap;
+      int box_size = min_int(max_x_box_size, max_y_box_size);
+      int offset = box_size + gap;
+      int total_x_size = g.x_fields * offset - gap;
+      int x_border = (screenx - total_x_size) / 2;
+      for (int y = 0; y < g.y_fields; y++) {
+        for (int x = 0; x < g.x_fields; x++) {
+          int xo = x * offset + x_border;
+          int yo = y * offset + min_border + top_bar;
+          Field *field = game_get_field(g, x, y);
+
+          if (press != NONE &&
+              in_rect(lastbuttonx, lastbuttony, xo, yo, box_size, box_size)) {
+            if (press == SHORT) {
+              bool lost = game_open_field_is_bomb(g, x, y);
+              if (lost) {
+                printf("LOOOSSSTTT");
+              }
+              // printf("opening field %d %d", x, y);
+            } else if (press == LONG) {
+              game_flag_field(g, x, y);
+            } else {
+              printf("ERROR SHOULLD NOT HAPPEN press was %d\n", press);
+            }
+          }
+
+          if (*field & IS_BOMB) {
+            CNFGLastColor = 0xff0000ff;
+          } else if (*field & REVEALED) {
+            CNFGLastColor = 0xffffffff;
+          } else if (*field & FLAGGED) {
+            CNFGLastColor = 0xffff00ff;
+          } else {
+            CNFGLastColor = 0x222222ff;
+          }
+          CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
+        }
+      }
+    }
+
+    // CNFGTackRectangle(600, 0, 950, 350);
+    //
+    // CNFGPenX = 10;
+    // CNFGPenY = 10;
+    //
+    // // Text
+    // pos = 0;
+    // CNFGColor(0xffffffff);
+    // for (i = 0; i < 1; i++) {
+    //   int c;
+    //   char tw[2] = {0, 0};
+    //   for (c = 0; c < 256; c++) {
+    //     tw[0] = c;
+    //
+    //     CNFGPenX = (c % 16) * 20 + 606;
+    //     CNFGPenY = (c / 16) * 20 + 5;
+    //     CNFGDrawText(tw, 4);
+    //   }
+    // }
+    //
+    // // Green triangles
+    // CNFGPenX = 0;
+    // CNFGPenY = 0;
+    //
+    // for (i = 0; i < 400; i++) {
+    //   RDPoint pp[3];
+    //   CNFGColor(0x00ff00ff);
+    //   pp[0].x = (short)(50 * sin((float)(i + iframeno) * .01) + (i % 20)
+    //   * 30); pp[0].y = (short)(50 * cos((float)(i + iframeno) * .01) + (i
+    //   / 20)
+    //   * 20); pp[1].x = (short)(20 * sin((float)(i + iframeno) * .01) + (i
+    //   % 20) * 30); pp[1].y = (short)(50 * cos((float)(i + iframeno) *
+    //   .01) + (i / 20) * 20); pp[2].x = (short)(10 * sin((float)(i +
+    //   iframeno) * .01) + (i % 20) * 30); pp[2].y = (short)(30 *
+    //   cos((float)(i + iframeno) * .01)
+    //   + (i / 20) * 20); CNFGTackPoly(pp, 3);
+    // }
+    //
+    CNFGPenX = 5;
+    CNFGPenY = 600;
+    CNFGLastColor = 0x4444ffff;
+    CNFGDrawText(genlog, 4);
+
+    frames++;
+    CNFGSwapBuffers();
+
+    ThisTime = OGGetAbsoluteTime();
+    if (ThisTime > LastFPSTime + 1) {
+      printf("FPS: %d\n", frames);
+      frames = 0;
+      linesegs = 0;
+      LastFPSTime += 1;
+    }
+  }
+
+  return (0);
+}
