@@ -3,8 +3,17 @@
 #include "utility.c"
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+
+typedef struct HitBox {
+  int x;
+  int y;
+  int width;
+  int height;
+} HitBox;
+
 typedef const u_int8_t Bitmap[8];
 // clang-format off
 static const Bitmap bitmap_letters[26] = {
@@ -501,6 +510,16 @@ static const Bitmap bitmap_explosion_highlight = {
     0b00010000,
     0b00011000,
 };
+static const Bitmap bitmap_settings_icon = {
+    0b00010000,
+    0b01011110,
+    0b01100100,
+    0b01011011,
+    0b11011010,
+    0b00100110,
+    0b01111010,
+    0b00001000,
+};
 // clang-format on
 
 void ui_draw_bitmap(int px, int py, int size, double scaling, Bitmap b,
@@ -555,8 +574,8 @@ void ui_draw_explosion(int x, int y, int size, uint32_t fg, uint32_t hl,
 #define ALIGN_LEFT 0
 #define ALIGN_CENTER 1
 #define ALIGN_LRIGHT 2
-void ui_draw_text(int x, int y, int height, int width, double scale, char *text,
-                  uint32_t color, uint32_t bg, int align) {
+HitBox ui_draw_text(int x, int y, int height, int width, double scale,
+                    char *text, uint32_t color, uint32_t bg, int align) {
   int text_length = strlen(text);
   int max_box_width = width / text_length;
   int box_size = min_int(scale * (double)height, max_box_width);
@@ -578,9 +597,38 @@ void ui_draw_text(int x, int y, int height, int width, double scale, char *text,
     if (c >= 'A' && c <= 'Z')
       ui_draw_bitmap(xo, yo, box_size, 1, bitmap_letters[c - 'A'], color);
     else {
+      if (c & 0b10000000) {
+        c &= ~0b10000000;
+        printf("byte hack %d", c);
+      }
       ui_draw_bitmap(xo, yo, box_size, 1, asciiSymbols[c - ' '], color);
     }
   }
+  HitBox h = {x, y, width, height};
+  return h;
+}
+HitBox ui_draw_text_force_ascii(int x, int y, int height, int width,
+                                double scale, char *text, uint32_t color,
+                                uint32_t bg, int align) {
+  int text_length = strlen(text);
+  int max_box_width = width / text_length;
+  int box_size = min_int(scale * (double)height, max_box_width);
+  int acual_width = text_length * box_size;
+  int left_border = align * (width - acual_width) / 2;
+  int top_border = (height - box_size) / 2;
+  if (bg & 0x00000ff) {
+    CNFGLastColor = bg;
+    CNFGTackRectangle(x, y, x + width, y + height);
+  }
+
+  for (int idx = 0; idx < text_length; idx++) {
+    int xo = x + left_border + idx * box_size;
+    int yo = y + top_border;
+    char c = text[idx];
+    ui_draw_bitmap(xo, yo, box_size, 1, asciiSymbols[c - ' '], color);
+  }
+  HitBox h = {x, y, width, height};
+  return h;
 }
 
 uint32_t color_lerp(uint32_t x, uint32_t y, double t) {

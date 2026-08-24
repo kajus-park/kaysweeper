@@ -11,9 +11,14 @@ typedef int Winstate;
 #define WON 1
 #define LOST 2
 
+typedef int Menu;
+#define NONE 0
+#define SETTINGS 2
+
 typedef u_int8_t Field;
 typedef struct Game {
   Winstate winstate;
+  Menu menu;
   bool started;
   bool *_started;
   bool confirm_reset;
@@ -22,6 +27,8 @@ typedef struct Game {
   int total_bombs;
   int capacity;
   Field *fields;
+  int level;
+  bool vibrate;
 } Game;
 
 #define BOMBS_MASK 0b00001111
@@ -200,4 +207,24 @@ void game_add_time_to_timer(Game *g, double s) {
   if (g->started) {
     g->time_spent += s;
   }
+}
+
+typedef struct Difficulty {
+  int width;
+  int height;
+  int num_bombs;
+} Difficulty;
+
+Difficulty levels[4] = {
+    {.width = 11, .height = 23, .num_bombs = 38},
+    {.width = 11, .height = 23, .num_bombs = 30},
+    {.width = 11, .height = 23, .num_bombs = 26},
+    {.width = 9, .height = 19, .num_bombs = 19},
+};
+
+void game_next_level_set(Game *g) {
+  g->level++;
+  g->level %= 4;
+  Difficulty d = levels[g->level];
+  game_reset(g, d.width, d.height, d.num_bombs);
 }

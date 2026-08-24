@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #define CNFG3D
 #define CNFG_IMPLEMENTATION
@@ -57,30 +58,32 @@ typedef struct Colorscheme {
   uint32_t win_foreground;
   uint32_t loss_background;
   uint32_t loss_foreground;
+  uint32_t menu_buttons;
+  uint32_t menu_buttons_text;
 
 } Colorscheme;
 
-Colorscheme colorscheme_default = {
-    .background = 0x444444ff,
-    .text_light = 0xffffffff,
-    .text_dark = 0x000000ff,
-    .reset_button = 0xaaaaaaff,
-    .reset_button_highlight = 0xffff00ff,
-    .reset_button_confirm = 0xaa8844ff,
-    .reset_button_symbol = 0x00000ff,
-    .revealed = 0xffffffff,
-    .flagged = 0xffff00ff,
-    .bomb_background = 0x884444ff,
-    .bomb_foreground = 0x181818ff,
-    .bomb_highlight = 0xaaaaaaff,
-    .explosion_foreground = 0xff44aaff,
-    .explosion_highlight = 0xffaa00ff,
-    .covered = 0x888888ff,
-    .win_foreground = 0x88ff88aa,
-    .win_background = 0x226622aa,
-    .loss_foreground = 0xff8888aa,
-    .loss_background = 0x662222bb,
-};
+Colorscheme colorscheme_default = {.background = 0x444444ff,
+                                   .text_light = 0xffffffff,
+                                   .text_dark = 0x000000ff,
+                                   .reset_button = 0xaaaaaaff,
+                                   .reset_button_highlight = 0xffff00ff,
+                                   .reset_button_confirm = 0xaa8844ff,
+                                   .reset_button_symbol = 0x00000ff,
+                                   .revealed = 0xffffffff,
+                                   .flagged = 0xffff00ff,
+                                   .bomb_background = 0x884444ff,
+                                   .bomb_foreground = 0x181818ff,
+                                   .bomb_highlight = 0xaaaaaaff,
+                                   .explosion_foreground = 0xff44aaff,
+                                   .explosion_highlight = 0xffaa00ff,
+                                   .covered = 0x888888ff,
+                                   .win_foreground = 0x88ff88aa,
+                                   .win_background = 0x226622aa,
+                                   .loss_foreground = 0xff8888aa,
+                                   .loss_background = 0x662222bb,
+                                   .menu_buttons = 0x664422ee,
+                                   .menu_buttons_text = 0xffffffee};
 
 int genlinelen = 0;
 char genlog[(GENLINEWIDTH + 1) * (GENLINES + 1) + 2] = "log";
@@ -214,6 +217,10 @@ Press_Type get_press_type() {
   return NONE;
 }
 
+bool hovered(HitBox hb) {
+  return in_rect(lastbuttonx, lastbuttony, hb.x, hb.y, hb.width, hb.height);
+}
+
 // extern struct android_app *gapp;
 
 int HandleDestroy() { return 0; }
@@ -247,8 +254,9 @@ int main(int argc, char **argv) {
   }
 
   Game g = {0};
+  g.vibrate = true;
   game_reset(&g, 5, 12, 5);
-  // game_reset(&g, 11, 23, 40);
+  // game_reset(&g, 11, 23, 36);
 
   while (1) {
     int i, pos;
@@ -286,7 +294,7 @@ int main(int argc, char **argv) {
       x = (screenx - buton_size) / 2;
       y = top_bar * 0.1;
       uint32_t color = colorscheme.reset_button;
-      if (g.winstate != PLAYING) {
+      if (g.winstate == WON || g.winstate == LOST) {
         color = color_sparkle(colorscheme.reset_button_highlight,
                               colorscheme.reset_button, LastFrameTime * 4);
       }
@@ -311,14 +319,35 @@ int main(int argc, char **argv) {
         }
       }
 
-      int bombs_remaining = g.total_bombs - game_count_flags(g);
+      x = (int)((screenx - buton_size) / 2) + buton_size + top_bar * 0.2;
+      y = top_bar * 0.1;
+      color = (g.menu == SETTINGS) ? colorscheme.reset_button_confirm
+                                   : colorscheme.reset_button;
+      CNFGLastColor = color;
+      CNFGTackRectangle(x, y, x + buton_size, y + buton_size);
+      ui_draw_bitmap(x, y, buton_size, 0.9, bitmap_settings_icon,
+                     colorscheme.reset_button_symbol);
+      if (_press == SHORT) {
+        if (in_rect(lastbuttonx, lastbuttony, x, y, buton_size, buton_size)) {
+          if (g.menu != SETTINGS) {
+            g.menu = SETTINGS;
+            _press = NONE;
+          } else if (g.menu == SETTINGS) {
+            g.menu = NONE;
+          }
+          _press = NONE;
+        }
+      }
+
+      int bombs_remaining =
+          (g.winstate == WON) ? 0 : g.total_bombs - game_count_flags(g);
       snprintf(buffer, bufsize, "B%02d", bombs_remaining);
       int width = screeny * 2 / 5;
       ui_draw_text(screenx - top_bar / 5 - width, top_bar / 5, top_bar * 3 / 5,
                    width, 1, &buffer[0], colorscheme.text_light, 0, 2);
     }
     { // boxes
-      int press = (g.winstate == PLAYING) ? _press : NONE;
+      int press = (g.winstate == PLAYING && g.menu == NONE) ? _press : NONE;
       int gap = smallest_dim / 200;
       int max_x_box_size = (screenx + gap - 2 * min_border) / g.x_fields - gap;
       int max_y_box_size =
@@ -335,6 +364,7 @@ int main(int argc, char **argv) {
 
           if (press != NONE &&
               in_rect(lastbuttonx, lastbuttony, xo, yo, box_size, box_size)) {
+            _press = NONE;
             if (press == SHORT) {
               bool lost = game_open_field_is_bomb(g, x, y);
               if (lost) {
@@ -345,7 +375,7 @@ int main(int argc, char **argv) {
               }
               // printf("opening field %d %d", x, y);
             } else if (press == LONG) {
-              if (game_flag_field(g, x, y))
+              if (game_flag_field(g, x, y) && g.vibrate)
                 vibrate();
             } else {
               printf("ERROR SHOULLD NOT HAPPEN press was %d\n", press);
@@ -383,7 +413,7 @@ int main(int argc, char **argv) {
         int x = 0;
         int y = screeny * 2 / 5;
         int height = screeny / 5;
-        ui_draw_text(x, y, height, screenx, 1, "YOU WIN!",
+        ui_draw_text(x, y, height, screenx, 1, "YOU WON!",
                      colorscheme.win_foreground, colorscheme.win_background, 1);
 
       } else if (g.winstate == LOST) {
@@ -395,44 +425,39 @@ int main(int argc, char **argv) {
                      1);
       }
     }
-    // CNFGTackRectangle(600, 0, 950, 350);
-    //
-    // CNFGPenX = 10;
-    // CNFGPenY = 10;
-    //
-    // // Text
-    // pos = 0;
-    // CNFGColor(0xffffffff);
-    // for (i = 0; i < 1; i++) {
-    //   int c;
-    //   char tw[2] = {0, 0};
-    //   for (c = 0; c < 256; c++) {
-    //     tw[0] = c;
-    //
-    //     CNFGPenX = (c % 16) * 20 + 606;
-    //     CNFGPenY = (c / 16) * 20 + 5;
-    //     CNFGDrawText(tw, 4);
-    //   }
-    // }
-    //
-    // // Green triangles
-    // CNFGPenX = 0;
-    // CNFGPenY = 0;
-    //
-    // for (i = 0; i < 400; i++) {
-    //   RDPoint pp[3];
-    //   CNFGColor(0x00ff00ff);
-    //   pp[0].x = (short)(50 * sin((float)(i + iframeno) * .01) + (i % 20)
-    //   * 30); pp[0].y = (short)(50 * cos((float)(i + iframeno) * .01) + (i
-    //   / 20)
-    //   * 20); pp[1].x = (short)(20 * sin((float)(i + iframeno) * .01) + (i
-    //   % 20) * 30); pp[1].y = (short)(50 * cos((float)(i + iframeno) *
-    //   .01) + (i / 20) * 20); pp[2].x = (short)(10 * sin((float)(i +
-    //   iframeno) * .01) + (i % 20) * 30); pp[2].y = (short)(30 *
-    //   cos((float)(i + iframeno) * .01)
-    //   + (i / 20) * 20); CNFGTackPoly(pp, 3);
-    // }
-    //
+    if (g.menu == SETTINGS) { // settings
+      int x = 0;
+      int y = top_bar;
+      CNFGLastColor = 0x66666666;
+      CNFGTackRectangle(x, y, screenx, screeny);
+      y = screeny / 6;
+      int height = screeny / 10;
+      int offset = height * 1.5;
+      char *text = g.vibrate ? " Vibrate on  " : " Vibrate off ";
+      if (hovered(ui_draw_text(x, y, height, screenx, 1, text,
+                               colorscheme.menu_buttons_text,
+                               colorscheme.menu_buttons, 1))) {
+        if (_press == SHORT) { // TODO: why does this not trigger?
+          g.vibrate = !g.vibrate;
+          _press = NONE;
+        }
+      }
+      x = 0;
+      y += offset;
+      char buffer[32];
+      snprintf(buffer, 32, " %02dx%02d B%02d ", g.x_fields, g.y_fields,
+               g.total_bombs);
+      buffer[3] |= 0b10000000; // make the x be lowercase
+      if (hovered(ui_draw_text(x, y, height, screenx, 1, &buffer[0],
+                               colorscheme.menu_buttons_text,
+                               colorscheme.menu_buttons, 1))) {
+        if (_press == SHORT) {
+          game_next_level_set(&g);
+          _press = NONE;
+        }
+      }
+    } // MENU
+
     CNFGPenX = 10;
     CNFGPenY = 600;
     CNFGLastColor = 0x4444ffff;
@@ -445,12 +470,16 @@ int main(int argc, char **argv) {
     ThisTime = OGGetAbsoluteTime();
     double delta_time = ThisTime - LastFrameTime;
     LastFrameTime = ThisTime;
-    if (g.winstate == PLAYING) {
-      game_add_time_to_timer(&g, delta_time);
+    if (g.winstate == PLAYING && g.menu == NONE && !suspended) {
+      if (delta_time < 1.0) {
+        game_add_time_to_timer(&g, delta_time);
+      }
     }
 
     if (ThisTime > LastFPSTime + 1) {
       printf("FPS: %d\n", frames);
+      printf("delta_time: %f\n", delta_time);
+
       frames = 0;
       linesegs = 0;
       LastFPSTime += 1;
