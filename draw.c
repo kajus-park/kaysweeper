@@ -452,11 +452,53 @@ static const Bitmap bitmap_bomb_highlight = {
     0b00000000,
     0b00000000,
     0b00000000,
-    0b00001000,
+    0b00000000,
     0b00000100,
     0b00000000,
     0b00000000,
     0b00000000,
+};
+static const Bitmap _bitmap_explosion = {
+    0b00010000,
+    0b01001100,
+    0b01010010,
+    0b00101110,
+    0b11100100,
+    0b01001010,
+    0b00101100,
+    0b00110100,
+};
+
+static const Bitmap _bitmap_explosion_highlight = {
+    0b00000000,
+    0b00000000,
+    0b00100100,
+    0b00010000,
+    0b00011010,
+    0b00110101,
+    0b01010010,
+    0b00000000,
+};
+static const Bitmap bitmap_explosion = {
+    0b01110110,
+    0b11001011,
+    0b11101101,
+    0b00000000,
+    0b01111110,
+    0b00000000,
+    0b00001000,
+    0b00100100,
+};
+
+static const Bitmap bitmap_explosion_highlight = {
+    0b00001000,
+    0b00110100,
+    0b00010110,
+    0b00011000,
+    0b00000000,
+    0b00011001,
+    0b00010000,
+    0b00011000,
 };
 // clang-format on
 
@@ -499,6 +541,14 @@ void ui_draw_bomb(int x, int y, int size, uint32_t fg, uint32_t hl,
   CNFGTackRectangle(x, y, x + size, y + size);
   ui_draw_bitmap(x, y, size, scaling, bitmap_bomb, fg);
   ui_draw_bitmap(x, y, size, scaling, bitmap_bomb_highlight, hl);
+}
+void ui_draw_explosion(int x, int y, int size, uint32_t fg, uint32_t hl,
+                       uint32_t bg) {
+  double scaling = 0.8;
+  CNFGLastColor = bg;
+  CNFGTackRectangle(x, y, x + size, y + size);
+  ui_draw_bitmap(x, y, size, scaling, bitmap_explosion, fg);
+  ui_draw_bitmap(x, y, size, scaling, bitmap_explosion_highlight, hl);
 }
 
 #define ALIGN_LEFT 0

@@ -305,7 +305,14 @@ int main(int argc, char **argv) {
             CNFGLastColor = 0xffff00ff;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           } else if ((DEBUG || g.winstate == LOST) && *field & IS_BOMB) {
-            ui_draw_bomb(xo, yo, box_size, 0x181818ff, 0xffffffff, 0xff0000ff);
+            uint32_t bomb_background = 0x770000ff;
+            if (*field & REVEALED) {
+              ui_draw_explosion(xo, yo, box_size, 0xff44aaff, 0xffaa00ff,
+                                bomb_background);
+            } else {
+              ui_draw_bomb(xo, yo, box_size, 0x181818ff, 0xffffffff,
+                           bomb_background);
+            }
           } else {
             CNFGLastColor = 0x888888ff;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
