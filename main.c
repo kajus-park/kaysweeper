@@ -32,7 +32,7 @@ unsigned long iframeno = 0;
 
 #define GENLINEWIDTH 89
 #define GENLINES 67
-#define DEBUG true
+// #define DEBUG true
 #ifndef DEBUG
 #define DEBUG false
 #endif // DEBUG
@@ -70,15 +70,15 @@ Colorscheme colorscheme_default = {
     .reset_button_symbol = 0x00000ff,
     .revealed = 0xffffffff,
     .flagged = 0xffff00ff,
-    .bomb_background = 0x770000ff,
+    .bomb_background = 0x884444ff,
     .bomb_foreground = 0x181818ff,
-    .bomb_highlight = 0xffffffff,
+    .bomb_highlight = 0xaaaaaaff,
     .explosion_foreground = 0xff44aaff,
     .explosion_highlight = 0xffaa00ff,
     .covered = 0x888888ff,
-    .win_foreground = 0x88ff8888,
+    .win_foreground = 0x88ff88aa,
     .win_background = 0x226622aa,
-    .loss_foreground = 0xff888899,
+    .loss_foreground = 0xff8888aa,
     .loss_background = 0x662222bb,
 };
 
@@ -206,7 +206,7 @@ Press_Type get_press_type() {
     return SHORT;
   }
   double held = OGGetAbsoluteTime() - button_down_start_time;
-  if (held > LONG_PRESS_TIME) {
+  if (button_down && held > LONG_PRESS_TIME) {
     last_handeled_press = button_down_start_time;
     return LONG;
   }
@@ -248,7 +248,7 @@ int main(int argc, char **argv) {
 
   Game g = {0};
   game_reset(&g, 5, 12, 5);
-  // game_reset(&g, 11, 23, 60);
+  // game_reset(&g, 11, 23, 40);
 
   while (1) {
     int i, pos;
@@ -355,19 +355,22 @@ int main(int argc, char **argv) {
             uint32_t fg = minesweeper_colors[*field & BOMBS_MASK];
             ui_draw_number(xo, yo, box_size, *field & BOMBS_MASK, fg,
                            colorscheme.revealed);
-          } else if (*field & FLAGGED) {
-            CNFGLastColor = colorscheme.flagged;
-            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
-          } else if ((DEBUG || g.winstate == LOST) && *field & IS_BOMB) {
+          } else if ((DEBUG || g.winstate == LOST || g.winstate == WON) &&
+                     *field & IS_BOMB) {
             if (*field & REVEALED) {
               ui_draw_explosion(
                   xo, yo, box_size, colorscheme.explosion_foreground,
                   colorscheme.explosion_highlight, colorscheme.bomb_background);
             } else {
+              uint32_t background_color = (*field & FLAGGED)
+                                              ? colorscheme.flagged
+                                              : colorscheme.bomb_background;
               ui_draw_bomb(xo, yo, box_size, colorscheme.bomb_foreground,
-                           colorscheme.bomb_highlight,
-                           colorscheme.bomb_background);
+                           colorscheme.bomb_highlight, background_color);
             }
+          } else if (*field & FLAGGED) {
+            CNFGLastColor = colorscheme.flagged;
+            CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           } else {
             CNFGLastColor = colorscheme.covered;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
