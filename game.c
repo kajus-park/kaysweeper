@@ -30,7 +30,7 @@ typedef struct Game {
 #define IS_BOMB 0b01000000
 #define FLOOD_FROM_HERE 0b10000000
 
-#define LONG_PRESS_TIME 0.5
+#define LONG_PRESS_TIME 0.2
 #define LONG_PRESS_MOVE 20
 
 u_int8_t *game_get_field(Game g, int x, int y) {
@@ -40,11 +40,18 @@ u_int8_t *game_get_field(Game g, int x, int y) {
     return NULL;
   return &g.fields[x + y * g.x_fields];
 }
-void game_flag_field(Game g, int x, int y) {
+bool game_flag_field(Game g, int x, int y) {
+  if (!g.started) {
+    return false;
+  }
   Field *field = game_get_field(g, x, y);
   if (field == NULL)
-    return;
+    return false;
+  if (*field & REVEALED) {
+    return false;
+  }
   *field ^= FLAGGED;
+  return true;
 }
 int game_index_x(Game g, int idx) {
   if (idx < 0 || idx >= g.x_fields * g.y_fields) {

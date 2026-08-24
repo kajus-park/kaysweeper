@@ -1,6 +1,7 @@
 #include "ASCIISymbols8x8Display.c"
 #include "CNFG.h"
 #include "utility.c"
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
@@ -580,4 +581,17 @@ void ui_draw_text(int x, int y, int height, int width, double scale, char *text,
       ui_draw_bitmap(xo, yo, box_size, 1, asciiSymbols[c - ' '], color);
     }
   }
+}
+
+uint32_t color_lerp(uint32_t x, uint32_t y, double t) {
+  uint32_t r = t * (x >> 24 & 0xff) + (1 - t) * (y >> 24 & 0xff);
+  uint32_t g = t * (x >> 16 & 0xff) + (1 - t) * (y >> 16 & 0xff);
+  uint32_t b = t * (x >> 8 & 0xff) + (1 - t) * (y >> 8 & 0xff);
+  uint32_t a = t * (x >> 0 & 0xff) + (1 - t) * (y >> 0 & 0xff);
+  return r << 24 | g << 16 | b << 8 | a;
+}
+
+uint32_t color_sparkle(uint32_t x, uint32_t y, double t) {
+  double t2 = (1 + sin(t * M_2_PI)) / 2;
+  return color_lerp(x, y, t2);
 }

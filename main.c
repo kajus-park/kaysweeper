@@ -11,7 +11,6 @@
 #include <android/log.h>
 #include <android/sensor.h>
 #include <android_native_app_glue.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -22,9 +21,9 @@
 #define CNFG3D
 #define CNFG_IMPLEMENTATION
 #include "CNFG.h"
+#include "android_util.c"
 #include "utility.c"
 
-#include "ASCIISymbols8x8Display.c"
 #include "draw.c"
 #include "game.c"
 
@@ -34,6 +33,54 @@ unsigned long iframeno = 0;
 #define GENLINEWIDTH 89
 #define GENLINES 67
 #define DEBUG true
+#ifndef DEBUG
+#define DEBUG false
+#endif // DEBUG
+
+typedef struct Colorscheme {
+  uint32_t background;
+  uint32_t reset_button;
+  uint32_t reset_button_highlight;
+  uint32_t reset_button_confirm;
+  uint32_t reset_button_symbol;
+  uint32_t text_light;
+  uint32_t text_dark;
+  uint32_t revealed;
+  uint32_t covered;
+  uint32_t flagged;
+  uint32_t bomb_background;
+  uint32_t bomb_foreground;
+  uint32_t bomb_highlight;
+  uint32_t explosion_foreground;
+  uint32_t explosion_highlight;
+  uint32_t win_background;
+  uint32_t win_foreground;
+  uint32_t loss_background;
+  uint32_t loss_foreground;
+
+} Colorscheme;
+
+Colorscheme colorscheme_default = {
+    .background = 0x444444ff,
+    .text_light = 0xffffffff,
+    .text_dark = 0x000000ff,
+    .reset_button = 0xaaaaaaff,
+    .reset_button_highlight = 0xffff00ff,
+    .reset_button_confirm = 0xaa8844ff,
+    .reset_button_symbol = 0x00000ff,
+    .revealed = 0xffffffff,
+    .flagged = 0xffff00ff,
+    .bomb_background = 0x770000ff,
+    .bomb_foreground = 0x181818ff,
+    .bomb_highlight = 0xffffffff,
+    .explosion_foreground = 0xff44aaff,
+    .explosion_highlight = 0xffaa00ff,
+    .covered = 0x888888ff,
+    .win_foreground = 0x88ff8888,
+    .win_background = 0x226622aa,
+    .loss_foreground = 0xff888899,
+    .loss_background = 0x662222bb,
+};
 
 int genlinelen = 0;
 char genlog[(GENLINEWIDTH + 1) * (GENLINES + 1) + 2] = "log";
@@ -167,7 +214,7 @@ Press_Type get_press_type() {
   return NONE;
 }
 
-extern struct android_app *gapp;
+// extern struct android_app *gapp;
 
 int HandleDestroy() { return 0; }
 
@@ -176,14 +223,16 @@ void HandleSuspend() { suspended = 1; }
 void HandleResume() { suspended = 0; }
 
 int main(int argc, char **argv) {
+  srand(time(NULL));
   int i, x, y;
   double ThisTime;
   double LastFPSTime = OGGetAbsoluteTime();
   double LastFrameTime = OGGetAbsoluteTime();
   double SecToWait;
   int linesegs = 0;
+  Colorscheme colorscheme = colorscheme_default;
 
-  CNFGBGColor = 0x400000ff;
+  CNFGBGColor = colorscheme.background;
   CNFGSetupFullscreen("Test Bench", 0);
 
   const char *assettext = "Not Found";
@@ -215,15 +264,12 @@ int main(int argc, char **argv) {
     }
 
     CNFGClearFrame();
-    CNFGColor(0xffffffff);
     CNFGGetDimensions(&screenx, &screeny);
 
-    // // Mesh in background
-    CNFGColor(0xffffffff);
     CNFGFlushRender();
 
     Press_Type _press = get_press_type();
-    CNFGBGColor = 0x444444ff;
+    CNFGBGColor = colorscheme.background;
     int smallest_dim = min_int(screeny, screenx);
     int min_border = smallest_dim / 40;
     int top_bar = smallest_dim / 8;
@@ -234,14 +280,21 @@ int main(int argc, char **argv) {
       char buffer[bufsize];
       snprintf(buffer, bufsize, "%02d:%02d", minutes, seconds);
       ui_draw_text(top_bar / 5, top_bar / 5, top_bar * 3 / 5, screeny * 2 / 5,
-                   1, &buffer[0], 0xffffffff, 0, 0);
+                   1, &buffer[0], colorscheme.text_light, 0, 0);
 
       int buton_size = top_bar * 0.9;
       x = (screenx - buton_size) / 2;
       y = top_bar * 0.1;
-      CNFGLastColor = g.confirm_reset ? 0xaa8844ff : 0xffffffff;
+      uint32_t color = colorscheme.reset_button;
+      if (g.winstate != PLAYING) {
+        color = color_sparkle(colorscheme.reset_button_highlight,
+                              colorscheme.reset_button, LastFrameTime * 4);
+      }
+      CNFGLastColor =
+          g.confirm_reset ? colorscheme.reset_button_confirm : color;
       CNFGTackRectangle(x, y, x + buton_size, y + buton_size);
-      ui_draw_bitmap(x, y, buton_size, 1, bitmap_redraw_arrow, 0x00000ff);
+      ui_draw_bitmap(x, y, buton_size, 1, bitmap_redraw_arrow,
+                     colorscheme.reset_button_symbol);
       if (_press == SHORT) {
         if (in_rect(lastbuttonx, lastbuttony, x, y, buton_size, buton_size)) {
           if (g.confirm_reset) {
@@ -262,7 +315,7 @@ int main(int argc, char **argv) {
       snprintf(buffer, bufsize, "B%02d", bombs_remaining);
       int width = screeny * 2 / 5;
       ui_draw_text(screenx - top_bar / 5 - width, top_bar / 5, top_bar * 3 / 5,
-                   width, 1, &buffer[0], 0xffffffff, 0, 2);
+                   width, 1, &buffer[0], colorscheme.text_light, 0, 2);
     }
     { // boxes
       int press = (g.winstate == PLAYING) ? _press : NONE;
@@ -292,7 +345,8 @@ int main(int argc, char **argv) {
               }
               // printf("opening field %d %d", x, y);
             } else if (press == LONG) {
-              game_flag_field(g, x, y);
+              if (game_flag_field(g, x, y))
+                vibrate();
             } else {
               printf("ERROR SHOULLD NOT HAPPEN press was %d\n", press);
             }
@@ -300,21 +354,22 @@ int main(int argc, char **argv) {
           if (*field & REVEALED && !(*field & IS_BOMB)) {
             uint32_t fg = minesweeper_colors[*field & BOMBS_MASK];
             ui_draw_number(xo, yo, box_size, *field & BOMBS_MASK, fg,
-                           0xffffffff);
+                           colorscheme.revealed);
           } else if (*field & FLAGGED) {
-            CNFGLastColor = 0xffff00ff;
+            CNFGLastColor = colorscheme.flagged;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           } else if ((DEBUG || g.winstate == LOST) && *field & IS_BOMB) {
-            uint32_t bomb_background = 0x770000ff;
             if (*field & REVEALED) {
-              ui_draw_explosion(xo, yo, box_size, 0xff44aaff, 0xffaa00ff,
-                                bomb_background);
+              ui_draw_explosion(
+                  xo, yo, box_size, colorscheme.explosion_foreground,
+                  colorscheme.explosion_highlight, colorscheme.bomb_background);
             } else {
-              ui_draw_bomb(xo, yo, box_size, 0x181818ff, 0xffffffff,
-                           bomb_background);
+              ui_draw_bomb(xo, yo, box_size, colorscheme.bomb_foreground,
+                           colorscheme.bomb_highlight,
+                           colorscheme.bomb_background);
             }
           } else {
-            CNFGLastColor = 0x888888ff;
+            CNFGLastColor = colorscheme.covered;
             CNFGTackRectangle(xo, yo, xo + box_size, yo + box_size);
           }
         }
@@ -325,15 +380,16 @@ int main(int argc, char **argv) {
         int x = 0;
         int y = screeny * 2 / 5;
         int height = screeny / 5;
-        ui_draw_text(x, y, height, screenx, 1, "YOU WIN!", 0x88ff8888,
-                     0x226622aa, 1);
+        ui_draw_text(x, y, height, screenx, 1, "YOU WIN!",
+                     colorscheme.win_foreground, colorscheme.win_background, 1);
 
       } else if (g.winstate == LOST) {
         int x = 0;
         int y = screeny * 2 / 5;
         int height = screeny / 5;
-        ui_draw_text(x, y, height, screenx, 1, "YOU LOST!", 0xff888899,
-                     0x662222bb, 1);
+        ui_draw_text(x, y, height, screenx, 1, "YOU LOST!",
+                     colorscheme.loss_foreground, colorscheme.loss_background,
+                     1);
       }
     }
     // CNFGTackRectangle(600, 0, 950, 350);
@@ -377,7 +433,8 @@ int main(int argc, char **argv) {
     CNFGPenX = 10;
     CNFGPenY = 600;
     CNFGLastColor = 0x4444ffff;
-    CNFGDrawText(genlog, 4);
+    if (DEBUG)
+      CNFGDrawText(genlog, 4);
 
     frames++;
     CNFGSwapBuffers();
