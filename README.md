@@ -3,10 +3,15 @@
 This is a minesweeper clone for Android written in C using [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid).
 With custom Pixelart by me and a font partially from [Romano Mancini](https://github.com/Romano-Mancini/ASCIISymbols8x8Display).
 
-![Start screen](./images/Start.jpg)
-![Playing](./images/Playing.jpg)
-![Lost](./images/Lost.jpg)
-![Settings](./images/Settings.jpg)
+<p align="center">
+  <img src="./images/Start.jpg" width="250">
+  <img src="./images/Playing.jpg" width="250">
+</p>
+
+<p align="center">
+  <img src="./images/Lost.jpg" width="250">
+  <img src="./images/Settings.jpg" width="250">
+</p>
 
 ## Features
 
