@@ -3,7 +3,6 @@
 #include "utility.c"
 #include <math.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
 
@@ -447,6 +446,16 @@ static const Bitmap bitmap_redraw_arrow = {
     0b00101110, 
     0b00000000,
 };
+static const Bitmap bitmap_confirm_icon = {
+    0b00000000,
+    0b00000001,
+    0b00000011,
+    0b00000110,
+    0b10001100,
+    0b11011000,
+    0b01110000,
+    0b00100000
+};
 static const Bitmap bitmap_bomb = {
     0b00110000,
     0b00011000,
@@ -599,7 +608,6 @@ HitBox ui_draw_text(int x, int y, int height, int width, double scale,
     else {
       if (c & 0b10000000) {
         c &= ~0b10000000;
-        printf("byte hack %d", c);
       }
       ui_draw_bitmap(xo, yo, box_size, 1, asciiSymbols[c - ' '], color);
     }

@@ -65,13 +65,13 @@ typedef struct Colorscheme {
 
 Colorscheme colorscheme_default = {.background = 0x444444ff,
                                    .text_light = 0xffffffff,
-                                   .text_dark = 0x000000ff,
+                                   .text_dark = 0xaaaaaaff,
                                    .reset_button = 0xaaaaaaff,
                                    .reset_button_highlight = 0xffff00ff,
                                    .reset_button_confirm = 0xaa8844ff,
                                    .reset_button_symbol = 0x00000ff,
                                    .revealed = 0xffffffff,
-                                   .flagged = 0xffff00ff,
+                                   .flagged = 0xff8888ff,
                                    .bomb_background = 0x884444ff,
                                    .bomb_foreground = 0x181818ff,
                                    .bomb_highlight = 0xaaaaaaff,
@@ -84,6 +84,83 @@ Colorscheme colorscheme_default = {.background = 0x444444ff,
                                    .loss_background = 0x662222bb,
                                    .menu_buttons = 0x664422ee,
                                    .menu_buttons_text = 0xffffffee};
+
+Colorscheme colorscheme_dark() {
+  Colorscheme c = colorscheme_default;
+  c.revealed = 0x111111ff;
+  c.reset_button = 0x888888ff;
+  c.reset_button_highlight = 0xaaaa00ff;
+  c.text_light = colorscheme_default.text_dark;
+  c.flagged = 0x884455ff;
+  c.background = 0x222222ff;
+  c.covered = 0x666666ff;
+  return c;
+}
+
+typedef struct Non_Persist {
+  Menu menu;
+  bool confirm_reset;
+} Non_Persist;
+typedef struct Persist {
+  uint32_t version;
+  Game g;
+  bool vibrate;
+  bool dark_theme;
+} Persist;
+
+#define SAVE_FILE "kaysweeper.save"
+#define SAVE_FILE_VERSION 0
+const char *get_save_path(void) {
+  static char *save_file;
+  if (save_file == NULL) {
+    const char *path = gapp->activity->internalDataPath;
+
+    size_t len = strlen(path) + 1 + strlen(SAVE_FILE) + 1;
+    save_file = malloc(len);
+
+    snprintf(save_file, len, "%s/%s", path, SAVE_FILE);
+
+    printf("Save path: %s\n", save_file);
+  }
+
+  return save_file;
+}
+void save_game(Persist persist) {
+  persist.version = SAVE_FILE_VERSION;
+  FILE *f = fopen(get_save_path(), "wb");
+  if (f == NULL) {
+    printf("Could not open file at %s\n", get_save_path());
+    return;
+  }
+  fwrite(&persist, sizeof(persist), 1, f);
+  fwrite(persist.g.fields, sizeof(Field),
+         persist.g.x_fields * persist.g.y_fields, f);
+  fflush(f);
+  fclose(f);
+  printf("saved data at %s\n", get_save_path());
+}
+
+bool load_game(Persist *persist) {
+  Persist p = {0};
+
+  FILE *f = fopen(get_save_path(), "rb");
+  if (!f) {
+    printf("No save file found %s\n", get_save_path());
+    return false;
+  }
+
+  fread(&p, sizeof(p), 1, f);
+  if (p.version != SAVE_FILE_VERSION) {
+    fclose(f);
+    return false;
+  }
+  p.g.fields = malloc(sizeof(Field) * p.g.x_fields * p.g.y_fields);
+  fread(p.g.fields, sizeof(Field), p.g.x_fields * p.g.y_fields, f);
+  fclose(f);
+  *persist = p;
+  persist->g._started = &persist->g.started;
+  return true;
+}
 
 int genlinelen = 0;
 char genlog[(GENLINEWIDTH + 1) * (GENLINES + 1) + 2] = "log";
@@ -237,26 +314,29 @@ int main(int argc, char **argv) {
   double LastFrameTime = OGGetAbsoluteTime();
   double SecToWait;
   int linesegs = 0;
-  Colorscheme colorscheme = colorscheme_default;
+  CNFGSetupFullscreen("Kaysweeper", 0);
+  //
+  // const char *assettext = "Not Found";
+  // AAsset *file = AAssetManager_open(gapp->activity->assetManager, "test.txt",
+  //                                   AASSET_MODE_BUFFER);
+  // if (file) {
+  //   size_t fileLength = AAsset_getLength(file);
+  //   char *temp = malloc(fileLength + 1);
+  //   memcpy(temp, AAsset_getBuffer(file), fileLength);
+  //   temp[fileLength] = 0;
+  //   assettext = temp;
+  // }
 
-  CNFGBGColor = colorscheme.background;
-  CNFGSetupFullscreen("Test Bench", 0);
-
-  const char *assettext = "Not Found";
-  AAsset *file = AAssetManager_open(gapp->activity->assetManager, "test.txt",
-                                    AASSET_MODE_BUFFER);
-  if (file) {
-    size_t fileLength = AAsset_getLength(file);
-    char *temp = malloc(fileLength + 1);
-    memcpy(temp, AAsset_getBuffer(file), fileLength);
-    temp[fileLength] = 0;
-    assettext = temp;
+  Persist persist = {0};
+  if (!load_game(&persist)) {
+    persist.vibrate = true;
+    game_next_level_set(&persist.g, 0);
   }
+  Non_Persist non_persist = {0};
+  Game *g = &persist.g;
 
-  Game g = {0};
-  g.vibrate = true;
-  game_reset(&g, 5, 12, 5);
-  // game_reset(&g, 11, 23, 36);
+  Colorscheme colorscheme =
+      persist.dark_theme ? colorscheme_dark() : colorscheme_default;
 
   while (1) {
     int i, pos;
@@ -281,9 +361,10 @@ int main(int argc, char **argv) {
     int smallest_dim = min_int(screeny, screenx);
     int min_border = smallest_dim / 40;
     int top_bar = smallest_dim / 8;
+
     { // Top Bar
-      int seconds = (int)g.time_spent % 60;
-      int minutes = g.time_spent / 60;
+      int seconds = (int)g->time_spent % 60;
+      int minutes = g->time_spent / 60;
       const int bufsize = 128;
       char buffer[bufsize];
       snprintf(buffer, bufsize, "%02d:%02d", minutes, seconds);
@@ -294,88 +375,95 @@ int main(int argc, char **argv) {
       x = (screenx - buton_size) / 2;
       y = top_bar * 0.1;
       uint32_t color = colorscheme.reset_button;
-      if (g.winstate == WON || g.winstate == LOST) {
+      if (g->winstate == WON || g->winstate == LOST) {
         color = color_sparkle(colorscheme.reset_button_highlight,
                               colorscheme.reset_button, LastFrameTime * 4);
       }
       CNFGLastColor =
-          g.confirm_reset ? colorscheme.reset_button_confirm : color;
+          non_persist.confirm_reset ? colorscheme.reset_button_confirm : color;
+
       CNFGTackRectangle(x, y, x + buton_size, y + buton_size);
-      ui_draw_bitmap(x, y, buton_size, 1, bitmap_redraw_arrow,
-                     colorscheme.reset_button_symbol);
+      if (non_persist.confirm_reset) {
+        ui_draw_bitmap(x, y, buton_size, 0.8, bitmap_confirm_icon,
+                       colorscheme.reset_button_symbol);
+      } else {
+        ui_draw_bitmap(x, y, buton_size, 1, bitmap_redraw_arrow,
+                       colorscheme.reset_button_symbol);
+      }
       if (_press == SHORT) {
         if (in_rect(lastbuttonx, lastbuttony, x, y, buton_size, buton_size)) {
-          if (g.confirm_reset) {
-            game_reset(&g, 0, 0, 0);
+          if (non_persist.confirm_reset) {
+            game_reset(g, 0, 0, 0);
             _press = NONE;
-            g.confirm_reset = false;
+            non_persist.confirm_reset = false;
             continue;
           } else {
-            g.confirm_reset = true;
+            non_persist.confirm_reset = true;
           }
           _press = NONE;
         } else {
-          g.confirm_reset = false;
+          non_persist.confirm_reset = false;
         }
       }
 
       x = (int)((screenx - buton_size) / 2) + buton_size + top_bar * 0.2;
       y = top_bar * 0.1;
-      color = (g.menu == SETTINGS) ? colorscheme.reset_button_confirm
-                                   : colorscheme.reset_button;
+      color = (non_persist.menu == SETTINGS) ? colorscheme.reset_button_confirm
+                                             : colorscheme.reset_button;
       CNFGLastColor = color;
       CNFGTackRectangle(x, y, x + buton_size, y + buton_size);
       ui_draw_bitmap(x, y, buton_size, 0.9, bitmap_settings_icon,
                      colorscheme.reset_button_symbol);
       if (_press == SHORT) {
         if (in_rect(lastbuttonx, lastbuttony, x, y, buton_size, buton_size)) {
-          if (g.menu != SETTINGS) {
-            g.menu = SETTINGS;
+          if (non_persist.menu != SETTINGS) {
+            non_persist.menu = SETTINGS;
             _press = NONE;
-          } else if (g.menu == SETTINGS) {
-            g.menu = NONE;
+          } else if (non_persist.menu == SETTINGS) {
+            non_persist.menu = NONE;
           }
           _press = NONE;
         }
       }
 
       int bombs_remaining =
-          (g.winstate == WON) ? 0 : g.total_bombs - game_count_flags(g);
+          (g->winstate == WON) ? 0 : g->total_bombs - game_count_flags(*g);
       snprintf(buffer, bufsize, "B%02d", bombs_remaining);
       int width = screeny * 2 / 5;
       ui_draw_text(screenx - top_bar / 5 - width, top_bar / 5, top_bar * 3 / 5,
                    width, 1, &buffer[0], colorscheme.text_light, 0, 2);
     }
     { // boxes
-      int press = (g.winstate == PLAYING && g.menu == NONE) ? _press : NONE;
+      int press =
+          (g->winstate == PLAYING && non_persist.menu == NONE) ? _press : NONE;
       int gap = smallest_dim / 200;
-      int max_x_box_size = (screenx + gap - 2 * min_border) / g.x_fields - gap;
+      int max_x_box_size = (screenx + gap - 2 * min_border) / g->x_fields - gap;
       int max_y_box_size =
-          (screeny + gap - 2 * min_border - top_bar) / g.y_fields - gap;
+          (screeny + gap - 2 * min_border - top_bar) / g->y_fields - gap;
       int box_size = min_int(max_x_box_size, max_y_box_size);
       int offset = box_size + gap;
-      int total_x_size = g.x_fields * offset - gap;
+      int total_x_size = g->x_fields * offset - gap;
       int x_border = (screenx - total_x_size) / 2;
-      for (int y = 0; y < g.y_fields; y++) {
-        for (int x = 0; x < g.x_fields; x++) {
+      for (int y = 0; y < g->y_fields; y++) {
+        for (int x = 0; x < g->x_fields; x++) {
           int xo = x * offset + x_border;
           int yo = y * offset + min_border + top_bar;
-          Field *field = game_get_field(g, x, y);
+          Field *field = game_get_field(*g, x, y);
 
           if (press != NONE &&
               in_rect(lastbuttonx, lastbuttony, xo, yo, box_size, box_size)) {
             _press = NONE;
             if (press == SHORT) {
-              bool lost = game_open_field_is_bomb(g, x, y);
+              bool lost = game_open_field_is_bomb(*g, x, y);
               if (lost) {
-                g.winstate = LOST;
+                g->winstate = LOST;
               }
-              if (game_won(g)) {
-                g.winstate = WON;
+              if (game_won(*g)) {
+                g->winstate = WON;
               }
               // printf("opening field %d %d", x, y);
             } else if (press == LONG) {
-              if (game_flag_field(g, x, y) && g.vibrate)
+              if (game_flag_field(*g, x, y) && persist.vibrate)
                 vibrate();
             } else {
               printf("ERROR SHOULLD NOT HAPPEN press was %d\n", press);
@@ -385,7 +473,7 @@ int main(int argc, char **argv) {
             uint32_t fg = minesweeper_colors[*field & BOMBS_MASK];
             ui_draw_number(xo, yo, box_size, *field & BOMBS_MASK, fg,
                            colorscheme.revealed);
-          } else if ((DEBUG || g.winstate == LOST || g.winstate == WON) &&
+          } else if ((DEBUG || g->winstate == LOST || g->winstate == WON) &&
                      *field & IS_BOMB) {
             if (*field & REVEALED) {
               ui_draw_explosion(
@@ -409,14 +497,14 @@ int main(int argc, char **argv) {
       }
     } // boxes
     { // Win/loss
-      if (g.winstate == WON) {
+      if (g->winstate == WON) {
         int x = 0;
         int y = screeny * 2 / 5;
         int height = screeny / 5;
         ui_draw_text(x, y, height, screenx, 1, "YOU WON!",
                      colorscheme.win_foreground, colorscheme.win_background, 1);
 
-      } else if (g.winstate == LOST) {
+      } else if (g->winstate == LOST) {
         int x = 0;
         int y = screeny * 2 / 5;
         int height = screeny / 5;
@@ -425,7 +513,7 @@ int main(int argc, char **argv) {
                      1);
       }
     }
-    if (g.menu == SETTINGS) { // settings
+    if (non_persist.menu == SETTINGS) { // settings
       int x = 0;
       int y = top_bar;
       CNFGLastColor = 0x66666666;
@@ -433,34 +521,85 @@ int main(int argc, char **argv) {
       y = screeny / 6;
       int height = screeny / 10;
       int offset = height * 1.5;
-      char *text = g.vibrate ? " Vibrate on  " : " Vibrate off ";
+      char *text = persist.vibrate ? " Vibrate on  " : " Vibrate off ";
       if (hovered(ui_draw_text(x, y, height, screenx, 1, text,
                                colorscheme.menu_buttons_text,
                                colorscheme.menu_buttons, 1))) {
         if (_press == SHORT) { // TODO: why does this not trigger?
-          g.vibrate = !g.vibrate;
+          persist.vibrate = !persist.vibrate;
           _press = NONE;
         }
       }
+
+      x = 0;
+      y += offset;
+      text = persist.dark_theme ? " darkmode  " : " lightmode ";
+      if (hovered(ui_draw_text(x, y, height, screenx, 1, text,
+                               colorscheme.menu_buttons_text,
+                               colorscheme.menu_buttons, 1))) {
+        if (_press == SHORT) {
+          persist.dark_theme = !persist.dark_theme;
+          colorscheme =
+              persist.dark_theme ? colorscheme_dark() : colorscheme_default;
+          _press = NONE;
+        }
+      }
+
       x = 0;
       y += offset;
       char buffer[32];
-      snprintf(buffer, 32, " %02dx%02d B%02d ", g.x_fields, g.y_fields,
-               g.total_bombs);
+      snprintf(buffer, 32, " %02dx%02d B%02d ", g->x_fields, g->y_fields,
+               g->total_bombs);
       buffer[3] |= 0b10000000; // make the x be lowercase
       if (hovered(ui_draw_text(x, y, height, screenx, 1, &buffer[0],
                                colorscheme.menu_buttons_text,
                                colorscheme.menu_buttons, 1))) {
         if (_press == SHORT) {
-          game_next_level_set(&g);
+          game_next_level_set(g, 1);
           _press = NONE;
         }
       }
-    } // MENU
+
+      x = 0;
+      y += offset;
+      int width = screenx / 7;
+      int *settings[3] = {&g->x_fields, &g->y_fields, &g->total_bombs};
+      for (int idx = 0; idx < 3; idx++) {
+        x += width;
+        bool dirty = false;
+        if (hovered(ui_draw_text(x, y, width, width, 0.7, "+",
+                                 colorscheme.menu_buttons_text,
+                                 colorscheme.menu_buttons, 1)) &&
+            _press == SHORT) {
+          _press = NONE;
+          int *setting = (settings[idx]);
+          if (*setting < 99) {
+            *setting += 1;
+            dirty = true;
+          }
+        }
+        if (hovered(ui_draw_text(x, y + width, width, width, 0.7, "-",
+                                 colorscheme.menu_buttons_text,
+                                 colorscheme.menu_buttons, 1)) &&
+            _press == SHORT) {
+          _press = NONE;
+          int *setting = (settings[idx]);
+          if (*setting > 3) {
+            *setting -= 1;
+            dirty = true;
+          }
+        }
+        if (dirty) {
+          g->level = -1;
+          game_reset(g, 0, 0, 0);
+        }
+        x += width;
+      }
+    } // settings
 
     CNFGPenX = 10;
     CNFGPenY = 600;
-    CNFGLastColor = 0x4444ffff;
+    CNFGLastColor = 0x00ff00ff;
     if (DEBUG)
       CNFGDrawText(genlog, 4);
 
@@ -470,13 +609,14 @@ int main(int argc, char **argv) {
     ThisTime = OGGetAbsoluteTime();
     double delta_time = ThisTime - LastFrameTime;
     LastFrameTime = ThisTime;
-    if (g.winstate == PLAYING && g.menu == NONE && !suspended) {
+    if (g->winstate == PLAYING && non_persist.menu == NONE && !suspended) {
       if (delta_time < 1.0) {
-        game_add_time_to_timer(&g, delta_time);
+        game_add_time_to_timer(g, delta_time);
       }
     }
 
     if (ThisTime > LastFPSTime + 1) {
+      save_game(persist);
       printf("FPS: %d\n", frames);
       printf("delta_time: %f\n", delta_time);
 

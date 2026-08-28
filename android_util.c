@@ -4,10 +4,11 @@
 #include <android_native_app_glue.h>
 #include <jni.h>
 #include <stdio.h>
+#include <unistd.h>
 extern struct android_app *gapp;
+
 void vibrate(void) {
   JNIEnv *env = NULL;
-
   (*gapp->activity->vm)->AttachCurrentThread(gapp->activity->vm, &env, NULL);
 
   jobject activity = gapp->activity->clazz;

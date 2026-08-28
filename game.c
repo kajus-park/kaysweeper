@@ -18,19 +18,15 @@ typedef int Menu;
 typedef u_int8_t Field;
 typedef struct Game {
   Winstate winstate;
-  Menu menu;
-  bool started;
   bool *_started;
-  bool confirm_reset;
+  bool started;
   double time_spent;
   int x_fields, y_fields;
   int total_bombs;
+  int level;
   int capacity;
   Field *fields;
-  int level;
-  bool vibrate;
 } Game;
-
 #define BOMBS_MASK 0b00001111
 #define FLAGGED 0b00010000
 #define REVEALED 0b00100000
@@ -156,7 +152,7 @@ bool game_open_field_is_bomb(Game g, int x, int y) {
   return false;
 }
 
-// 0 keeps current config retutrn success
+// 0 keeps current config return success
 bool game_reset(Game *g, int width, int height, int num_bombs) {
   if (width > 0)
     g->x_fields = width;
@@ -164,6 +160,9 @@ bool game_reset(Game *g, int width, int height, int num_bombs) {
     g->y_fields = height;
   if (num_bombs > 0) {
     g->total_bombs = num_bombs;
+  }
+  if (g->total_bombs > g->x_fields * g->y_fields - 9) {
+    g->total_bombs = max_int(g->x_fields * g->y_fields - 9, 0);
   }
   g->time_spent = 0;
   g->started = false;
@@ -216,15 +215,18 @@ typedef struct Difficulty {
 } Difficulty;
 
 Difficulty levels[4] = {
-    {.width = 11, .height = 23, .num_bombs = 38},
-    {.width = 11, .height = 23, .num_bombs = 30},
-    {.width = 11, .height = 23, .num_bombs = 26},
-    {.width = 9, .height = 19, .num_bombs = 19},
+    {.width = 11, .height = 23, .num_bombs = 60},
+    {.width = 11, .height = 23, .num_bombs = 50},
+    {.width = 11, .height = 23, .num_bombs = 40},
+    {.width = 9, .height = 19, .num_bombs = 30},
 };
 
-void game_next_level_set(Game *g) {
-  g->level++;
+void game_next_level_set(Game *g, int delta) {
+  g->level += delta;
   g->level %= 4;
+  while (g->level < 0) {
+    g->level += 4;
+  }
   Difficulty d = levels[g->level];
   game_reset(g, d.width, d.height, d.num_bombs);
 }
